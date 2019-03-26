@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon Mar 25 11:59:18 2019
+
+@author: christian
+"""
+
+import os
+import sys
+from pyspark.sql import SparkSession
+import random
+import math
+import glob
+
+def init_spark():
+    spark = SparkSession \
+        .builder \
+        .appName("Python Spark SQL basic example") \
+        .config("spark.some.config.option", "some-value") \
+        .getOrCreate()
+    return spark
+  
+def list_to_dict(the_list):
+    the_dict = {}
+    
+    for element in the_list:
+        key = list(element.keys())[0]
+        the_dict[key] = element.values()
+    
+    return the_dict
+
+def define_data():
+    spark = init_spark()
+    #data = spark.read.csv('short_train.csv', header = True).rdd
+    data = spark.read.csv('short_train.csv', header = True).rdd.map(lambda p: (int(float(p[1])*1000)/1000.0, [int(p[0])])).reduceByKey(lambda a,b: a + b).collect()
+    #print(len(data.take(4)[2][1]))
+    return data
+#define_data()
+
+def test_data(b_range):
+    spark = init_spark()
+    data = define_data()
+    
+    hashes = {}
+    originals = {}
+    
+    output = ""
+    for piece in data:
+        for b in range(len(piece[1]) - b_range):
+            hashes[hash(str(piece[1][b:b+b_range]))] = piece[0]
+        originals[piece[0]] = [piece[1]]
+    print("inital hashes done")
+    #print(hashes.keys())
+    #hashes = data.map(lambda d: {hash(str(d[1])):d[0]}).collect()
+    #hashes = list_to_dict(hashes)
+    #print(len(hashes.keys()))
+    
+    file_names = sorted(list(glob.glob("./test/*.csv")))
+    file_names = file_names[:10]
+    
+    for file_name in file_names:
+        print(file_name)
+        test_data = spark.read.csv(file_name, header = True).rdd.map(lambda p: int(p[0])).collect()
+            
+        tests = [[]]
+            
+        index = 0
+        for i in range(len(test_data)):
+            tests[index].append(test_data[i])
+                
+            if(i % 4096 == 0 and i != 0):
+                index +=1
+                tests.append([])
+            #print(len(tests))
+        for test in tests:
+            #possible times for these 4096 rows
+            possibilities = {}
+            for b in range(len(test) - b_range):
+                this_hash = hash(str(test[b:b+b_range]))
+                #print(this_hash)
+                if this_hash in hashes.keys():
+                    if this_hash in possibilities.keys():
+                        possibilities[hashes[this_hash]] += 1
+                    else:
+                        possibilities[hashes[this_hash]] = 1
+            best_distance = sys.maxsize
+            best_key = ""
+            for possible in possibilities.keys():
+                '''
+                euclidean distance measure for best
+                '''
+                distance = sum((x-y) ** 2 for x,y in zip(test,originals[possible][0]))
+                
+                #distance = possibilities[possible]
+                if(distance < best_distance):
+                    best_distance = distance
+                    best_key = possible
+            print(best_key)
+            if i == (len(test_data))-1:
+                if best_key != "":
+                    output += file_name + "," + str(best_key) + "\n"
+    output_file = open("test_results.csv", "w+")
+    output_file.write(output)
+    output_file.close()
+    print("complete")
+
+test_data(10)
