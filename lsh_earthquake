@@ -8,11 +8,14 @@ Created on Mon Mar 25 11:59:18 2019
 
 import os
 import sys
-from pyspark.sql import SparkSession
+#from pyspark.sql import SparkSession
 import random
 import math
 import glob
-
+import dask.bag as db
+import dask.dataframe as df
+import csv
+'''
 def init_spark():
     spark = SparkSession \
         .builder \
@@ -20,7 +23,7 @@ def init_spark():
         .config("spark.some.config.option", "some-value") \
         .getOrCreate()
     return spark
-  
+ '''
 def list_to_dict(the_list):
     the_dict = {}
     
@@ -29,40 +32,76 @@ def list_to_dict(the_list):
         the_dict[key] = element.values()
     
     return the_dict
+def add_list(x,y):
+    return x+y
+
+def read_test(source):
+    test = []
+    with open(source) as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                line_count += 1
+            else: 
+                test.append(int(row[0]))
+    return test
 
 def define_data():
-    spark = init_spark()
+    #spark = init_spark()
     #data = spark.read.csv('short_train.csv', header = True).rdd
-    data = spark.read.csv('short_train.csv', header = True).rdd.map(lambda p: (int(float(p[1])*1000)/1000.0, [int(p[0])])).reduceByKey(lambda a,b: a + b).collect()
+    #data = spark.read.csv('short_train.csv', header = True).rdd.map(lambda p: (int(float(p[1])*1000)/1000.0, [int(p[0])])).reduceByKey(lambda a,b: a + b).collect()
+    
+    #data = df.read_csv("short_train.csv").to_bag()
+    #print(data.take(2))
+    #data = df.read_csv("short_train.csv").applymap(lambda p: (int(float(p[1])*1000)/1000.0, [int(p[0])]))#.foldby("name",add_list)
+    
+    data = {}
+    with open("train.csv") as csv_file:
+        csv_reader = csv.reader(csv_file, delimiter=',')
+        line_count = 0
+        for row in csv_reader:
+            if line_count == 0:
+                line_count += 1
+            else:
+                new_time = (int(float(row[1])*1000)/1000.0)
+                if new_time in data.keys():
+                    data[new_time].append(int(row[0]))
+                else:
+                    data[new_time] = [int(row[0])]
+                line_count += 1
     #print(len(data.take(4)[2][1]))
+    #print(data[1.469])
+    #print(data.keys())
     return data
 #define_data()
 
 def test_data(b_range):
-    spark = init_spark()
-    data = define_data()
+    #spark = init_spark()
+    originals = define_data()
     
     hashes = {}
-    originals = {}
-    
-    output = ""
-    for piece in data:
-        for b in range(len(piece[1]) - b_range):
-            hashes[hash(str(piece[1][b:b+b_range]))] = piece[0]
-        originals[piece[0]] = [piece[1]]
+    output = "seg_id,time_to_failure\n"
+    for key in originals.keys():
+        piece = originals[key]
+        for b in range(len(piece) - b_range):
+            this_hash = hash(str(piece[b:b+b_range]))
+            if(this_hash in hashes.keys()):
+                hashes[this_hash].append(key)
+            hashes[this_hash] = [key]
     print("inital hashes done")
+    #print(hashes)
     #print(hashes.keys())
     #hashes = data.map(lambda d: {hash(str(d[1])):d[0]}).collect()
     #hashes = list_to_dict(hashes)
     #print(len(hashes.keys()))
-    
+
     file_names = sorted(list(glob.glob("./test/*.csv")))
-    file_names = file_names[:10]
-    
+    #file_names = file_names[:10]
     for file_name in file_names:
-        print(file_name)
-        test_data = spark.read.csv(file_name, header = True).rdd.map(lambda p: int(p[0])).collect()
-            
+       # print(file_name)
+        #test_data = spark.read.csv(file_name, header = True).rdd.map(lambda p: int(p[0])).collect()
+        test_data = read_test(file_name)            
         tests = [[]]
             
         index = 0
@@ -73,6 +112,10 @@ def test_data(b_range):
                 index +=1
                 tests.append([])
             #print(len(tests))
+        last_best_key = 5.67
+        not_found_count = 0
+        
+        index = 0
         for test in tests:
             #possible times for these 4096 rows
             possibilities = {}
@@ -80,26 +123,34 @@ def test_data(b_range):
                 this_hash = hash(str(test[b:b+b_range]))
                 #print(this_hash)
                 if this_hash in hashes.keys():
-                    if this_hash in possibilities.keys():
-                        possibilities[hashes[this_hash]] += 1
-                    else:
-                        possibilities[hashes[this_hash]] = 1
+                    all_times = hashes[this_hash]
+                    for time in all_times:
+                        if time in possibilities.keys():
+                            possibilities[time] += 1
+                        else:
+                            possibilities[time] = 1
             best_distance = sys.maxsize
             best_key = ""
             for possible in possibilities.keys():
-                '''
-                euclidean distance measure for best
-                '''
-                distance = sum((x-y) ** 2 for x,y in zip(test,originals[possible][0]))
                 
-                #distance = possibilities[possible]
+                #euclidean distance measure for best
+                
+                #distance = sum((x-y) ** 2 for x,y in zip(test,originals[possible]))
+                
+                distance = possibilities[possible]
                 if(distance < best_distance):
                     best_distance = distance
                     best_key = possible
-            print(best_key)
-            if i == (len(test_data))-1:
-                if best_key != "":
-                    output += file_name + "," + str(best_key) + "\n"
+            if(best_key == ""):
+                not_found_count += .001
+                best_key = last_best_key - not_found_count
+            else:
+                last_best_key = best_key
+                not_found_count = 0
+            #print(best_key)
+            if index == (len(tests))-1:
+                output += file_name.split(".")[1][6:] + "," + str(best_key) + "\n"
+            index += 1
     output_file = open("test_results.csv", "w+")
     output_file.write(output)
     output_file.close()
