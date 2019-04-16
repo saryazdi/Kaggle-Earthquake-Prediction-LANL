@@ -1,0 +1,17 @@
+# Predictions vs actual values
+
+plt.figure(figsize=(6, 6))
+plt.scatter(y_train_, y_pred_train)
+plt.xlim(0, 20)
+plt.ylim(0, 20)
+plt.xlabel('actual', fontsize=12)
+plt.ylabel('predicted', fontsize=12)
+plt.plot([(0, 0), (20, 20)], [(0, 0), (20, 20)])
+plt.show()
+
+
+# Hist plot
+
+sns.distplot(y_train_, kde=False, label='target');
+sns.distplot(y_pred_train, kde=False, label='prediction');
+plt.legend();

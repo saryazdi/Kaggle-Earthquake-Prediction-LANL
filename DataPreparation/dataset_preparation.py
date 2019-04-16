@@ -173,15 +173,16 @@ def get_LANL_data(data_dir, method='sample', n=5000, normalize=True):
 	X_train_mean = np.mean(X_train)
 	X_train_std = np.std(X_train)
 	print('Splitting & Sampling...')
-	val_eq_ind = np.hstack([earthquake_ind[-4:], len_train_total])
-	val_eq_ind -= np.min(val_eq_ind)
-	val_slicing_ranges = [(val_eq_ind[i], (val_eq_ind[i+1]-seq_len)) for i in range(len(val_eq_ind)-1)]
-	val_sample_size = 1000 # 838
-	val_sample_ind = uniform_from_slices(val_slicing_ranges, val_sample_size)
-	X_val, y_val = sample_sequences(X_val, y_val, val_sample_ind, seq_len)
-	X_val = X_val[:,:,None]
 
 	if method == 'random':
+		val_eq_ind = np.hstack([earthquake_ind[-4:], len_train_total])
+		val_eq_ind -= np.min(val_eq_ind)
+		val_slicing_ranges = [(val_eq_ind[i], (val_eq_ind[i+1]-seq_len)) for i in range(len(val_eq_ind)-1)]
+		val_sample_size = 1000 # 838
+		val_sample_ind = uniform_from_slices(val_slicing_ranges, val_sample_size)
+		X_val, y_val = sample_sequences(X_val, y_val, val_sample_ind, seq_len)
+		X_val = X_val[:,:,None]
+
 		train_eq_ind = earthquake_ind[:-4]
 		train_slicing_ranges = [(train_eq_ind[i], (train_eq_ind[i+1]-seq_len)) for i in range(len(train_eq_ind)-1)]
 		train_sample_size = n # 3355
@@ -190,10 +191,22 @@ def get_LANL_data(data_dir, method='sample', n=5000, normalize=True):
 		X_train = X_train[:,:,None]
 
 	elif method == 'slicing':
+		val_eq_ind = np.hstack([earthquake_ind[-4:], len_train_total])
+		val_eq_ind -= np.min(val_eq_ind)
+		val_slicing_ranges = [(val_eq_ind[i], (val_eq_ind[i+1]-seq_len)) for i in range(len(val_eq_ind)-1)]
+		val_sample_size = 1000 # 838
+		val_sample_ind = uniform_from_slices(val_slicing_ranges, val_sample_size)
+		X_val, y_val = sample_sequences(X_val, y_val, val_sample_ind, seq_len)
+		X_val = X_val[:,:,None]
+	
 		X_train = X_train[:int(np.floor(X_train.shape[0] / seq_len))*seq_len]
 		y_train = y_train[:int(np.floor(y_train.shape[0] / seq_len))*seq_len]
 		X_train= X_train.reshape((-1, seq_len, 1))
 		y_train = y_train[seq_len-1::seq_len]
+	
+	elif method == 'raw':
+		pass
+
 	else:
 		raise ValueError('Uknown method: %s' % method)
 
